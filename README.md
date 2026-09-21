@@ -18,6 +18,8 @@ answers — you don't need a live Bedrock Knowledge Base resource for it.
 | `build_eval_dataset.py` | Runs the agent over the test set, writes `rag_eval_dataset.jsonl` in Bedrock's RAG-eval input format |
 | `create_evaluation_job.py` | `boto3` script — creates the Bedrock RAG evaluation job, including one custom metric |
 | `check_evaluation_job.py` | `boto3` script — polls the job, stores history, and reports score trends and a business-value proxy |
+| `dashboard_server.py` | Local backend that serves the live dashboard, history API, and optional Bedrock job poller |
+| `visualize_results.py` | Generates the standalone HTML dashboard and its browser refresh behavior |
 | `local_tests.py` | Fully local, no-AWS test runner (retrieval accuracy, required facts, refusal behavior) |
 
 ## Two layers of testing
@@ -106,6 +108,29 @@ some answers are actually bad.
    scores and evaluator explanations, so later reports identify the prompts
    that drove a metric up or down and quote the judge's rationale. The first
    run is only a baseline; change reasons appear from the second run onward.
+
+## Live dashboard
+
+The generated HTML is a static snapshot when opened directly. For automatic
+updates, run the local backend instead:
+
+```powershell
+python dashboard_server.py --port 8000
+```
+
+Open <http://127.0.0.1:8000>. The browser refreshes the dashboard every 15
+seconds. The backend reads local `evaluation_history.jsonl`; AWS credentials
+are never sent to the browser.
+
+To have the backend also watch a running Bedrock evaluation and save its
+results automatically when it completes:
+
+```powershell
+python dashboard_server.py --job-arn <job-arn> --port 8000
+```
+
+For completed jobs, you can still use `check_evaluation_job.py` first; the
+server will not duplicate a job already present in the history file.
 
 ## Metrics included
 
