@@ -122,6 +122,10 @@ Open <http://127.0.0.1:8000>. The browser refreshes the dashboard every 15
 seconds. The backend reads local `evaluation_history.jsonl`; AWS credentials
 are never sent to the browser.
 
+The dashboard includes an overview trajectory plus a metric explorer. Choose a
+metric from the selector, or click a latest-score card, to see each recorded
+run, sample count, score change, and a focused score visualization.
+
 To have the backend also watch a running Bedrock evaluation and save its
 results automatically when it completes:
 
