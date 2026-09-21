@@ -59,7 +59,7 @@ def svg_chart(rows, width=900, height=340):
             y = top + (1 - value) * plot_height
             points.append(f"{x:.1f},{y:.1f}")
         color = colors[row_index % len(colors)]
-        parts.append(f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" stroke-width="3"/>')
+        parts.append(f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" stroke-width="3"><title>{html.escape(name.replace("Builtin.", ""))}</title></polyline>')
         if points:
             x, y = points[-1].split(",")
             parts.append(f'<circle cx="{x}" cy="{y}" r="4" fill="{color}"/>')
@@ -135,9 +135,8 @@ section {{ margin-top:34px; }} h2 {{ font-size:1.25rem; font-weight:500; margin:
 .control, .detail {{ background:white; border:1px solid var(--line); padding:18px; }}
 select {{ width:100%; border:1px solid var(--line); background:white; color:var(--ink); padding:10px; font: .9rem Arial,sans-serif; }}
 .detail h3 {{ margin:0 0 4px; font-size:1.6rem; font-weight:500; }} .detail-meta {{ color:var(--muted); font: .76rem Arial,sans-serif; }}
-.score-strip {{ display:flex; gap:8px; align-items:end; height:120px; margin:18px 0; border-bottom:1px solid var(--line); }}
-.score-bar {{ flex:1; min-width:18px; background:var(--teal); position:relative; }} .score-bar span {{ position:absolute; bottom:calc(100% + 5px); width:100%; text-align:center; color:var(--muted); font:.68rem Arial,sans-serif; }}
-.score-bar small {{ position:absolute; top:calc(100% + 5px); width:100%; text-align:center; color:var(--muted); font:.65rem Arial,sans-serif; }}
+.focused-chart {{ margin-top:18px; overflow:auto; }} .focused-chart svg {{ min-width:420px; }}
+.legend {{ display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:10px; font:.72rem Arial,sans-serif; color:var(--muted); }} .legend span {{ display:inline-flex; align-items:center; gap:5px; }} .legend i {{ width:18px; height:3px; display:inline-block; }}
 .detail-table {{ width:100%; border-collapse:collapse; font:.76rem Arial,sans-serif; }} .detail-table th, .detail-table td {{ padding:8px 4px; border-bottom:1px solid #edf1f2; text-align:left; }}
 .note {{ color:var(--muted); font: .78rem/1.5 Arial,sans-serif; }}
 @media (max-width:650px) {{ main {{ padding:30px 16px 48px; }} header {{ display:block; }} .meta {{ text-align:left; margin-top:18px; }} .explorer {{ grid-template-columns:1fr; }} }}
@@ -148,9 +147,50 @@ select {{ width:100%; border:1px solid var(--line); background:white; color:var(
 <section><div class="index"><div><div class="kicker" style="color:#8ed1c9">business value proxy</div><strong>{index_text}</strong></div><small>{index_change_text}<br>Weighted quality signal, not a dollar estimate.</small></div></section>
 <section><h2>Latest metric scores</h2><div class="cards">{cards_html}</div></section>
 <section><h2>Metric explorer</h2><div class="explorer"><div class="control"><label for="metric-select" class="kicker">Choose a metric</label><select id="metric-select">{metric_options}</select><p class="note">Inspect every recorded run, score count, and change context for one metric.</p></div><div class="detail" id="metric-detail"></div></div></section>
-<section><h2>Metric trajectory</h2><div class="chart">{svg_chart(rows)}</div><p class="note">Scores come from Bedrock evaluator results stored in evaluation_history.jsonl. The dashboard shows association over runs, not proof that a specific code change caused a change in score.</p></section>
+<section><h2>Metric trajectory</h2><div class="chart" id="overview-chart">{svg_chart(rows)}</div><div class="legend" id="overview-legend"></div><p class="note">Hover over a line to see its metric name. Choose or click a metric to focus this chart on that metric.</p></section>
 </main><script>
 const metricData = {metric_data_json};
+const chartColors = ['#0f766e', '#2563eb', '#ca8a04', '#dc2626', '#7c3aed', '#0891b2', '#be123c', '#4f46e5'];
+function lineChart(name, entries) {{
+    if (!entries.length) return '<p class="note">No history for this metric.</p>';
+    const width = 760, height = 260, left = 48, right = 16, top = 22, bottom = 34;
+    const plotWidth = width - left - right, plotHeight = height - top - bottom;
+    const points = entries.map((entry, index) => {{
+        const x = entries.length === 1 ? left : left + index * plotWidth / (entries.length - 1);
+        const y = top + (1 - entry.score) * plotHeight;
+        return {{x, y, entry}};
+    }});
+    const grid = [0, .25, .5, .75, 1].map(value => {{
+        const y = top + (1 - value) * plotHeight;
+        return `<line x1="${{left}}" y1="${{y}}" x2="${{width-right}}" y2="${{y}}" class="grid"/><text x="${{left-8}}" y="${{y+4}}" text-anchor="end" class="axis">${{value.toFixed(2)}}</text>`;
+    }}).join('');
+    const labels = points.map(point => `<text x="${{point.x}}" y="${{height-10}}" text-anchor="middle" class="axis">R${{point.entry.run}}</text>`).join('');
+    const line = points.map(point => `${{point.x}},${{point.y}}`).join(' ');
+    const dots = points.map(point => `<circle cx="${{point.x}}" cy="${{point.y}}" r="4" fill="var(--teal)"><title>${{name.replace('Builtin.', '')}}: ${{point.entry.score.toFixed(3)}} (run ${{point.entry.run}})</title></circle>`).join('');
+    return `<svg viewBox="0 0 ${{width}} ${{height}}" role="img" aria-label="${{name}} score over time">${{grid}}${{labels}}<polyline points="${{line}}" fill="none" stroke="var(--teal)" stroke-width="3"/>${{dots}}</svg>`;
+}}
+function renderOverview(selectedName = null) {{
+    const chart = document.querySelector('#overview-chart');
+    const legend = document.querySelector('#overview-legend');
+    if (selectedName) {{
+        chart.innerHTML = lineChart(selectedName, metricData[selectedName] || []);
+        legend.innerHTML = `<span><i style="background:var(--teal)"></i>${{selectedName.replace('Builtin.', '')}}</span>`;
+        return;
+    }}
+    const names = Object.keys(metricData);
+    const series = names.map((name, index) => {{
+        const entries = metricData[name];
+        const color = chartColors[index % chartColors.length];
+        const points = entries.map((entry, pointIndex) => {{
+            const x = entries.length === 1 ? 62 : 62 + pointIndex * 818 / (entries.length - 1);
+            const y = 24 + (1 - entry.score) * 274;
+            return `${{x}},${{y}}`;
+        }}).join(' ');
+        return `<polyline points="${{points}}" fill="none" stroke="${{color}}" stroke-width="3"><title>${{name.replace('Builtin.', '')}}</title></polyline>`;
+    }}).join('');
+    chart.innerHTML = `<svg viewBox="0 0 900 340" role="img" aria-label="All metric score trends"><line x1="62" y1="298" x2="880" y2="298" class="grid"/><line x1="62" y1="161" x2="880" y2="161" class="grid"/><line x1="62" y1="24" x2="880" y2="24" class="grid"/><text x="52" y="302" text-anchor="end" class="axis">0.0</text><text x="52" y="165" text-anchor="end" class="axis">0.5</text><text x="52" y="28" text-anchor="end" class="axis">1.0</text>${{series}}</svg>`;
+    legend.innerHTML = names.map((name, index) => `<span><i style="background:${{chartColors[index % chartColors.length]}}"></i>${{name.replace('Builtin.', '')}}</span>`).join('');
+}}
 function renderMetric(name) {{
     const detail = document.querySelector('#metric-detail');
     const entries = metricData[name] || [];
@@ -159,21 +199,21 @@ function renderMetric(name) {{
     if (!detail || !latest) return;
     const delta = previous ? latest.score - previous.score : null;
     const deltaText = delta === null ? 'Baseline run' : `${{delta >= 0 ? '+' : ''}}${{delta.toFixed(3)}} vs previous`;
-    const bars = entries.map(entry => `<div class="score-bar" style="height:${{Math.max(4, entry.score * 100)}}%"><span>${{entry.score.toFixed(3)}}</span><small>R${{entry.run}}</small></div>`).join('');
     const table = [...entries].reverse().map(entry => `<tr><td>Run ${{entry.run}}</td><td>${{entry.timestamp}}</td><td>${{entry.score.toFixed(3)}}</td><td>${{entry.count ?? 'n/a'}}</td></tr>`).join('');
-    detail.innerHTML = `<h3>${{name.replace('Builtin.', '')}}</h3><div class="detail-meta">Latest score <strong>${{latest.score.toFixed(3)}}</strong> · ${{deltaText}}</div><div class="score-strip">${{bars}}</div><table class="detail-table"><thead><tr><th>Run</th><th>Timestamp</th><th>Score</th><th>Samples</th></tr></thead><tbody>${{table}}</tbody></table>`;
+    detail.innerHTML = `<h3>${{name.replace('Builtin.', '')}}</h3><div class="detail-meta">Latest score <strong>${{latest.score.toFixed(3)}}</strong> · ${{deltaText}}</div><div class="focused-chart">${{lineChart(name, entries)}}</div><table class="detail-table"><thead><tr><th>Run</th><th>Timestamp</th><th>Score</th><th>Samples</th></tr></thead><tbody>${{table}}</tbody></table>`;
 }}
 document.addEventListener('click', event => {{
     const card = event.target.closest('.metric');
     if (card) {{
         const name = Object.keys(metricData).find(key => card.textContent.includes(key.replace('Builtin.', '')));
-        if (name) {{ document.querySelector('#metric-select').value = name; renderMetric(name); }}
+        if (name) {{ document.querySelector('#metric-select').value = name; renderMetric(name); renderOverview(name); }}
     }}
 }});
 document.addEventListener('change', event => {{
-    if (event.target.id === 'metric-select') renderMetric(event.target.value);
+    if (event.target.id === 'metric-select') {{ renderMetric(event.target.value); renderOverview(event.target.value); }}
 }});
 renderMetric(document.querySelector('#metric-select')?.value);
+renderOverview();
 async function refreshDashboard() {{
     try {{
         const response = await fetch('/api/dashboard', {{cache: 'no-store'}});
