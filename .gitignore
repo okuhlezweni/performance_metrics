@@ -1,0 +1,15 @@
+# Local secrets and environment configuration
+.env
+.env.*
+!.env.example
+env.env
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local evaluation state and generated output
+evaluation_history.jsonl
+evaluation_dashboard.html
